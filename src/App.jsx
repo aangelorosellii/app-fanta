@@ -249,8 +249,14 @@ export default function App() {
     setPlayers(nextPlayers);
     persistState(nextPlayers, teamsRef.current);
   };
-  const release = (playerId) =>
-    setPlayers((ps) => ps.map((p) => (p.id === playerId ? { ...p, owner: null, paid: 0 } : p)));
+  const release = (playerId) => {
+    const nextPlayers = playersRef.current.map((p) => (
+      p.id === playerId ? { ...p, owner: null, paid: 0 } : p
+    ));
+    playersRef.current = nextPlayers;
+    setPlayers(nextPlayers);
+    persistState(nextPlayers, teamsRef.current);
+  };
   const toggleTarget = (id) =>
     setPlayers((ps) => ps.map((p) => (p.id === id ? { ...p, target: !p.target } : p)));
   const renameTeam = (id, name) =>
@@ -1069,7 +1075,7 @@ function LeagueView({ stats, players, release, renameTeam }) {
                           <div style={{ width: 20, height: 20, borderRadius: 5, background: r.color, color: "white", fontWeight: 800, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{p.role}</div>
                           <div style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name} <span style={{ color: "#94a3b8", fontSize: 11 }}>({p.team})</span></div>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{p.paid}</div>
-                          <button onClick={() => release(p.id)} style={{ ...iconBtn, width: 26, height: 26, background: "transparent", color: "#cbd5e1" }} title="Rimuovi"><Trash2 size={14} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); release(p.id); }} style={{ ...iconBtn, width: 26, height: 26, background: "transparent", color: "#cbd5e1" }} title="Rimuovi"><Trash2 size={14} /></button>
                         </div>
                       ))}
                     </div>
