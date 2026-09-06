@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Plus, Trash2, Check, X, AlertTriangle, Search, RotateCcw, Star, Users, Gavel, Play, Pause, Volume2, VolumeX, Download, BarChart3, TrendingUp, TrendingDown, Minus, Newspaper, Award, Filter } from "lucide-react";
+import { Plus, Trash2, Check, X, AlertTriangle, Search, Star, Users, Gavel, Play, Pause, Volume2, VolumeX, Download, BarChart3, TrendingUp, TrendingDown, Minus, Newspaper, Award, Filter } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 
@@ -56,7 +56,7 @@ const INIT_TEAMS = TEAM_NAMES.map((name, i) => ({ id: i, name }));
 
 // --- Gestione accessi ---
 // team  = una delle 8 squadre: vede Asta e Lega
-// admin = gestore lega: vede Asta e Lega + poteri (Reset, Excel), NIENTE Analisi
+// admin = gestore lega: vede Asta e Lega + poteri (Excel), NIENTE Analisi
 // dev   = sviluppatore (password): vede TUTTO, Analisi compresa, + poteri
 const DEV_PASSWORD = "ZoeBella";
 const canSeeAnalysis = (user) => !!user && user.kind === "dev";
@@ -95,6 +95,8 @@ function ResponsiveStyles() {
       @media (max-width: 720px) {
         .af-league-grid { grid-template-columns: 1fr !important; }
         .af-market-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        .af-live-layout { grid-template-columns: 1fr !important; }
+        .af-live-actions { position: static !important; }
         .af-header-actions { flex-wrap: wrap; justify-content: flex-end; }
       }
       /* su schermi molto piccoli i bottoni prezzo restano leggibili */
@@ -284,7 +286,7 @@ export default function App() {
   const safeView = view === "analysis" && !isDev ? "auction" : view;
 
   return (
-    <div style={{ maxWidth: safeView === "analysis" || safeView === "league" ? 1100 : 760, width: "100%", margin: "0 auto", padding: "16px clamp(10px, 3vw, 16px)", fontFamily: "system-ui, sans-serif", color: "#1e293b" }}>
+    <div style={{ maxWidth: safeView === "analysis" || safeView === "league" || safeView === "auction" ? 1100 : 760, width: "100%", margin: "0 auto", padding: "16px clamp(10px, 3vw, 16px)", fontFamily: "system-ui, sans-serif", color: "#1e293b" }}>
       <ResponsiveStyles />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>⚽ Asta Fanta</h1>
@@ -296,7 +298,6 @@ export default function App() {
           </span>
           <span style={{ fontSize: 13, color: "#64748b", marginRight: 2 }}>{userLabel}</span>
           {canMng && <button onClick={exportExcel} style={btnGhost}><Download size={14} /> Excel</button>}
-          {canMng && <button onClick={resetAll} style={btnGhost}><RotateCcw size={14} /> Reset</button>}
           <button onClick={logout} style={btnGhost} title="Cambia utente"><X size={14} /> Esci</button>
         </div>
       </div>
@@ -1034,14 +1035,40 @@ function LiveView({ players, teams, assign }) {
 
   // --- active auction screen ---
   const leaderName = leader !== null ? teams[leader].name : "—";
+  const liveControls = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <button onClick={() => { setSoundOn((s) => !s); getCtx(); }} style={{ ...btnGhost, justifyContent: "center", width: "100%" }} title={soundOn ? "Disattiva audio" : "Attiva audio"}>
+        {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+      </button>
+      {!sold ? (
+        <>
+          <button onClick={togglePause} style={{ ...btnGhost, justifyContent: "center", width: "100%" }}>
+            {running ? <><Pause size={15} /> Pausa</> : <><Play size={15} /> Riprendi</>}
+          </button>
+          <button onClick={() => { setSold(true); setRunning(false); jingle(); }} style={{ background: "#0f172a", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, cursor: "pointer", width: "100%" }}>
+            Finisci asta
+          </button>
+        </>
+      ) : (
+        <>
+          <button onClick={() => { setSold(false); setTime(RESET_TIME); setRunning(true); }} style={{ ...btnGhost, justifyContent: "center", width: "100%" }}>
+            <Play size={15} /> Riapri (+{RESET_TIME}s)
+          </button>
+          <button onClick={reset} style={{ ...btnGhost, justifyContent: "center", width: "100%" }}>Annulla</button>
+          <button onClick={doAssign} disabled={leader === null}
+            style={{ background: leader === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 800, cursor: leader === null ? "default" : "pointer", width: "100%" }}>
+            <Check size={16} style={{ verticalAlign: "middle" }} /> Aggiudica a {leaderName} ({price})
+          </button>
+        </>
+      )}
+    </div>
+  );
   return (
-    <div>
-      {/* Audio toggle */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
-        <button onClick={() => { setSoundOn((s) => !s); getCtx(); }} style={{ ...btnGhost, padding: "6px 10px" }} title={soundOn ? "Disattiva audio" : "Attiva audio"}>
-          {soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
-        </button>
+    <div className="af-live-layout" style={{ display: "grid", gridTemplateColumns: "180px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+      <div className="af-live-actions" style={{ position: "sticky", top: 12 }}>
+        {liveControls}
       </div>
+      <div style={{ minWidth: 0 }}>
       {/* Player header */}
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -1112,31 +1139,6 @@ function LiveView({ players, teams, assign }) {
         ))}
       </div>
 
-      {/* Controls */}
-      <div style={{ display: "flex", gap: 8 }}>
-        {!sold ? (
-          <>
-            <button onClick={togglePause} style={{ ...btnGhost, flex: 1, justifyContent: "center" }}>
-              {running ? <><Pause size={15} /> Pausa</> : <><Play size={15} /> Riprendi</>}
-            </button>
-            <button onClick={() => { setSold(true); setRunning(false); jingle(); }} style={{ flex: 1, background: "#0f172a", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, cursor: "pointer" }}>
-              Finisci asta
-            </button>
-          </>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-            <button onClick={() => { setSold(false); setTime(RESET_TIME); setRunning(true); }} style={{ ...btnGhost, justifyContent: "center" }}>
-              <Play size={15} /> Riapri (+{RESET_TIME}s) — qualcuno voleva rilanciare
-            </button>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={reset} style={{ ...btnGhost, flex: 1, justifyContent: "center" }}>Annulla</button>
-              <button onClick={doAssign} disabled={leader === null}
-                style={{ flex: 2, background: leader === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 800, cursor: leader === null ? "default" : "pointer" }}>
-                <Check size={16} style={{ verticalAlign: "middle" }} /> Aggiudica a {leaderName} ({price})
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
