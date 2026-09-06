@@ -358,14 +358,12 @@ function LoginScreen({ onLogin }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <button onClick={() => onLogin({ kind: "admin" })}
-          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+          style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
           Admin lega
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#1e40af", background: "#dbeafe", borderRadius: 999, padding: "2px 8px" }}>gestione</span>
         </button>
         <button onClick={() => setMode("dev")}
-          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+          style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
           Developer
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#047857", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 999, padding: "2px 8px" }}>Analisi · password</span>
         </button>
       </div>
     </div>
