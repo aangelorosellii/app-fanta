@@ -485,6 +485,7 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
   const [team, setTeam] = useState("ALL");
   const [sort, setSort] = useState("adj");
   const [selected, setSelected] = useState(null);
+  const [assigning, setAssigning] = useState(null);
 
   const teamList = useMemo(() => [...new Set(players.map((p) => p.team))].sort(), [players]);
   const me = stats[0];
@@ -610,7 +611,10 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
                     <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800, color: "#065f46" }}>{dyn.sugg}</td>
                     <td style={{ padding: "8px 10px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{p.q}</td>
                     <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                      <button onClick={() => setSelected(p)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Dettagli</button>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                        {!taken && <button onClick={() => setAssigning(p)} style={{ background: "#22c55e", color: "#fff", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Assegna</button>}
+                        <button onClick={() => setSelected(p)} style={{ background: "#0f172a", color: "#fff", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Dettagli</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -623,6 +627,52 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
       </div>
 
       {selected && <AnalysisModal p={selected} teams={teams} stats={stats} players={players} assign={assign} toggleTarget={toggleTarget} onClose={() => setSelected(null)} />}
+      {assigning && <AnalysisAssignModal p={assigning} teams={teams} assign={assign} onClose={() => setAssigning(null)} />}
+    </div>
+  );
+}
+
+function AnalysisAssignModal({ p, teams, assign, onClose }) {
+  const [teamId, setTeamId] = useState(null);
+  const [paid, setPaid] = useState(String(p.prezzo ?? p.q ?? 1));
+  const confirmAssign = () => {
+    if (teamId === null) return;
+    assign(p.id, teamId, Number(paid) || 0);
+    onClose();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 460, width: "100%", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 4 }}>ASSEGNA GIOCATORE</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+            <div style={{ fontSize: 13, color: "#64748b" }}>{p.team} · Quotazione {p.q}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 9, width: 34, height: 34, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><X size={17} color="#475569" /></button>
+        </div>
+        <div style={{ padding: 18 }}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>Crediti pagati</div>
+            <input type="number" min="0" value={paid} onChange={(e) => setPaid(e.target.value)}
+              style={{ ...inp, width: "100%", textAlign: "center", fontSize: 24, fontWeight: 900 }} />
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>Squadra</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 14 }}>
+            {teams.map((t) => (
+              <button key={t.id} onClick={() => setTeamId(t.id)}
+                style={{ padding: "11px 8px", borderRadius: 10, border: teamId === t.id ? "2px solid #0f172a" : "1px solid #e2e8f0", background: teamId === t.id ? "#0f172a" : "white", color: teamId === t.id ? "white" : "#1e293b", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+                {t.name}
+              </button>
+            ))}
+          </div>
+          <button onClick={confirmAssign} disabled={teamId === null}
+            style={{ width: "100%", background: teamId === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "12px", fontWeight: 900, cursor: teamId === null ? "default" : "pointer" }}>
+            <Check size={16} style={{ verticalAlign: "middle" }} /> Assegna
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
