@@ -865,6 +865,10 @@ function LiveView({ players, teams, assign }) {
   const [running, setRunning] = useState(false);
   const [sold, setSold] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const [quickAssign, setQuickAssign] = useState(false);
+  const [quickPlayer, setQuickPlayer] = useState(null);
+  const [quickTeam, setQuickTeam] = useState(null);
+  const [quickPrice, setQuickPrice] = useState(1);
   const audioCtxRef = useRef(null);
 
   // lazy audio context (created on first user gesture)
@@ -945,6 +949,8 @@ function LiveView({ players, teams, assign }) {
 
   const startAuction = (p) => {
     getCtx(); // unlock audio on user gesture
+    setQuickPlayer(null);
+    setQuickTeam(null);
     setCurrent(p);
     setPrice((p.q > 0 ? p.q : 0) + 1); // parte dalla quotazione + 1 (primo rilancio)
     setLeader(null);
@@ -983,6 +989,18 @@ function LiveView({ players, teams, assign }) {
     }
     reset();
   };
+  const pickQuickPlayer = (p) => {
+    setQuickPlayer(p);
+    setQuickTeam(null);
+    setQuickPrice(Math.max(1, p.q || 1));
+  };
+  const doQuickAssign = () => {
+    if (!quickPlayer || quickTeam === null) return;
+    assign(quickPlayer.id, quickTeam, quickPrice);
+    setQuickPlayer(null);
+    setQuickTeam(null);
+    setQuery("");
+  };
   const reset = () => {
     setCurrent(null); setLeader(null); setBidCount(0); setRunning(false); setSold(false); setTime(START_TIME); setPrice(0);
   };
@@ -999,10 +1017,42 @@ function LiveView({ players, teams, assign }) {
         <div style={{ textAlign: "center", color: "#64748b", fontSize: 14, marginBottom: 12 }}>
           Scegli un giocatore dal listone per avviare l'asta.
         </div>
+        <button onClick={() => { setQuickAssign((v) => !v); setQuickPlayer(null); setQuickTeam(null); }}
+          style={{ width: "100%", background: quickAssign ? "#0f172a" : "white", color: quickAssign ? "white" : "#0f172a", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 12px", fontWeight: 800, cursor: "pointer", marginBottom: 10 }}>
+          Assegnazione rapida
+        </button>
         <div style={{ position: "relative", marginBottom: 10 }}>
           <Search size={16} style={{ position: "absolute", left: 10, top: 11, color: "#94a3b8" }} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca giocatore o squadra..." style={{ ...inp, width: "100%", paddingLeft: 34, fontSize: 15 }} />
         </div>
+        {quickAssign && quickPlayer && (
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{quickPlayer.name}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>{quickPlayer.team} · Quotazione {quickPlayer.q}</div>
+              </div>
+              <button onClick={() => { setQuickPlayer(null); setQuickTeam(null); }} style={btnGhostSm} title="Annulla selezione"><X size={16} /></button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>Prezzo</div>
+              <input type="number" min="1" value={quickPrice} onChange={(e) => setQuickPrice(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ ...inp, width: 92, fontWeight: 800, textAlign: "center" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 10 }}>
+              {teams.map((t) => (
+                <button key={t.id} onClick={() => setQuickTeam(t.id)}
+                  style={{ padding: "10px 8px", borderRadius: 10, border: quickTeam === t.id ? "2px solid #0f172a" : "1px solid #e2e8f0", background: quickTeam === t.id ? "#0f172a" : "white", color: quickTeam === t.id ? "white" : "#1e293b", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={doQuickAssign} disabled={quickTeam === null}
+              style={{ width: "100%", background: quickTeam === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "11px", fontWeight: 900, cursor: quickTeam === null ? "default" : "pointer" }}>
+              <Check size={16} style={{ verticalAlign: "middle" }} /> Assegna in diretta
+            </button>
+          </div>
+        )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
           {ROLE_BTN.map(([k, l]) => (
             <button key={k} onClick={() => setRoleFilter(k)} style={roleFilter === k ? { ...chipOn, background: ROLE_MAP[k].color, borderColor: ROLE_MAP[k].color } : chip}>{l}</button>
@@ -1015,13 +1065,13 @@ function LiveView({ players, teams, assign }) {
           {results.map((p) => {
             const rr = ROLE_MAP[p.role];
             return (
-              <button key={p.id} onClick={() => startAuction(p)} style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
+              <button key={p.id} onClick={() => quickAssign ? pickQuickPlayer(p) : startAuction(p)} style={{ display: "flex", alignItems: "center", gap: 8, background: quickPlayer?.id === p.id ? "#f1f5f9" : "white", border: quickPlayer?.id === p.id ? "2px solid #0f172a" : "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
                 <div style={{ width: 24, height: 24, borderRadius: 6, background: rr.color, color: "white", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{p.role}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                   <div style={{ fontSize: 11, color: "#64748b" }}>{p.team}</div>
                 </div>
-                <Play size={18} color="#22c55e" style={{ flexShrink: 0 }} />
+                {quickAssign ? <Check size={18} color="#22c55e" style={{ flexShrink: 0 }} /> : <Play size={18} color="#22c55e" style={{ flexShrink: 0 }} />}
               </button>
             );
           })}
