@@ -133,6 +133,21 @@ export default function App() {
   const applyingRemote = useRef(false); // evita di riscrivere ciò che arriva dal cloud
   const loaded = useRef(false);         // primo caricamento avvenuto
   const saveTimer = useRef(null);       // debounce dei salvataggi
+  const playersRef = useRef(players);
+  const teamsRef = useRef(teams);
+
+  useEffect(() => { playersRef.current = players; }, [players]);
+  useEffect(() => { teamsRef.current = teams; }, [teams]);
+
+  const persistState = async (nextPlayers = playersRef.current, nextTeams = teamsRef.current) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("asta_stato").update({ players: nextPlayers, teams: nextTeams, updated_at: new Date().toISOString() }).eq("id", STATE_ROW_ID);
+      setSyncState("online");
+    } catch (e) {
+      setSyncState("offline");
+    }
+  };
 
   // salva l'utente loggato (solo locale: il ruolo è personale del dispositivo)
   useEffect(() => {
@@ -225,8 +240,16 @@ export default function App() {
     });
   }, [players, teams]);
 
-  const assign = (playerId, owner, paid) =>
-    setPlayers((ps) => ps.map((p) => (p.id === playerId ? { ...p, owner, paid: paid ?? p.paid } : p)));
+  const assign = (playerId, owner, paid) => {
+    const ownerId = Number(owner);
+    const paidValue = paid === undefined || paid === null ? undefined : Math.max(0, Number(paid) || 0);
+    const nextPlayers = playersRef.current.map((p) => (
+      p.id === playerId ? { ...p, owner: ownerId, paid: paidValue ?? p.paid } : p
+    ));
+    playersRef.current = nextPlayers;
+    setPlayers(nextPlayers);
+    persistState(nextPlayers, teamsRef.current);
+  };
   const release = (playerId) =>
     setPlayers((ps) => ps.map((p) => (p.id === playerId ? { ...p, owner: null, paid: 0 } : p)));
   const toggleTarget = (id) =>
