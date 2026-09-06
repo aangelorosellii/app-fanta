@@ -134,14 +134,21 @@ export default function App() {
   const saveTimer = useRef(null);       // debounce dei salvataggi
   const playersRef = useRef(players);
   const teamsRef = useRef(teams);
+  const latestLocalWriteAt = useRef("");
 
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { teamsRef.current = teams; }, [teams]);
 
   const persistState = async (nextPlayers = playersRef.current, nextTeams = teamsRef.current) => {
     if (!supabase) return;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const updatedAt = new Date().toISOString();
+    latestLocalWriteAt.current = updatedAt;
     try {
-      await supabase.from("asta_stato").update({ players: nextPlayers, teams: nextTeams, updated_at: new Date().toISOString() }).eq("id", STATE_ROW_ID);
+      await supabase.from("asta_stato").update({ players: nextPlayers, teams: nextTeams, updated_at: updatedAt }).eq("id", STATE_ROW_ID);
       setSyncState("online");
     } catch (e) {
       setSyncState("offline");
@@ -164,9 +171,16 @@ export default function App() {
 
     const applyRow = (row) => {
       if (!row) return;
+      if (row.updated_at && latestLocalWriteAt.current && row.updated_at < latestLocalWriteAt.current) return;
       applyingRemote.current = true;
-      if (Array.isArray(row.players)) setPlayers(row.players);
-      if (Array.isArray(row.teams)) setTeams(row.teams);
+      if (Array.isArray(row.players)) {
+        playersRef.current = row.players;
+        setPlayers(row.players);
+      }
+      if (Array.isArray(row.teams)) {
+        teamsRef.current = row.teams;
+        setTeams(row.teams);
+      }
       // sblocco al ciclo successivo, così l'effetto di save non riparte
       setTimeout(() => { applyingRemote.current = false; }, 0);
     };
@@ -241,13 +255,14 @@ export default function App() {
 
   const assign = (playerId, owner, paid) => {
     const ownerId = Number(owner);
+    if (!Number.isInteger(ownerId) || ownerId < 0 || ownerId >= teamsRef.current.length) return;
     const paidValue = paid === undefined || paid === null ? undefined : Math.max(0, Number(paid) || 0);
     const nextPlayers = playersRef.current.map((p) => (
       p.id === playerId ? { ...p, owner: ownerId, paid: paidValue ?? p.paid } : p
     ));
     playersRef.current = nextPlayers;
     setPlayers(nextPlayers);
-    persistState(nextPlayers, teamsRef.current);
+    return persistState(nextPlayers, teamsRef.current);
   };
   const release = (playerId) => {
     const nextPlayers = playersRef.current.map((p) => (
@@ -255,7 +270,7 @@ export default function App() {
     ));
     playersRef.current = nextPlayers;
     setPlayers(nextPlayers);
-    persistState(nextPlayers, teamsRef.current);
+    return persistState(nextPlayers, teamsRef.current);
   };
   const toggleTarget = (id) =>
     setPlayers((ps) => ps.map((p) => (p.id === id ? { ...p, target: !p.target } : p)));
@@ -829,9 +844,11 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget, currentUser
 function AnalysisAssignModal({ p, teams, assign, onClose }) {
   const [teamId, setTeamId] = useState(null);
   const [paid, setPaid] = useState(String(p.prezzo ?? p.q ?? 1));
-  const confirmAssign = () => {
-    if (teamId === null) return;
-    assign(p.id, teamId, Number(paid) || 0);
+  const [saving, setSaving] = useState(false);
+  const confirmAssign = async () => {
+    if (teamId === null || saving) return;
+    setSaving(true);
+    await assign(p.id, teamId, Number(paid) || 0);
     onClose();
   };
 
@@ -861,9 +878,9 @@ function AnalysisAssignModal({ p, teams, assign, onClose }) {
               </button>
             ))}
           </div>
-          <button onClick={confirmAssign} disabled={teamId === null}
-            style={{ width: "100%", background: teamId === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "12px", fontWeight: 900, cursor: teamId === null ? "default" : "pointer" }}>
-            <Check size={16} style={{ verticalAlign: "middle" }} /> Assegna
+          <button onClick={confirmAssign} disabled={teamId === null || saving}
+            style={{ width: "100%", background: teamId === null || saving ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "12px", fontWeight: 900, cursor: teamId === null || saving ? "default" : "pointer" }}>
+            <Check size={16} style={{ verticalAlign: "middle" }} /> {saving ? "Salvataggio..." : "Assegna"}
           </button>
         </div>
       </div>
@@ -878,6 +895,7 @@ function AnalysisModal({ p, teams, stats, players, assign, toggleTarget, current
   const dyn = dynamicPrice(p, me, players);
   const [picking, setPicking] = useState(false);
   const [bid, setBid] = useState(String(p.prezzo ?? p.q ?? 1));
+  const [savingAssign, setSavingAssign] = useState(false);
   const taken = p.owner !== null;
   const Stat = ({ label, value, hint }) => (
     <div style={{ background: "#f8fafc", borderRadius: 10, padding: "9px 11px" }}>
@@ -886,7 +904,13 @@ function AnalysisModal({ p, teams, stats, players, assign, toggleTarget, current
       {hint && <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{hint}</div>}
     </div>
   );
-  const doAssign = (owner) => { assign(p.id, owner, Number(bid) || 0); setPicking(false); onClose(); };
+  const doAssign = async (owner) => {
+    if (savingAssign) return;
+    setSavingAssign(true);
+    await assign(p.id, owner, Number(bid) || 0);
+    setPicking(false);
+    onClose();
+  };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 25px 50px rgba(0,0,0,0.25)" }}>
@@ -914,8 +938,8 @@ function AnalysisModal({ p, teams, stats, players, assign, toggleTarget, current
                 <button onClick={() => setPicking(true)} style={{ flex: 1, background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "10px", fontWeight: 800, cursor: "pointer" }}>Assegna a una squadra ({bid || p.q})</button>
               </div>
             ) : (
-              <select autoFocus defaultValue="" onChange={(e) => e.target.value !== "" && doAssign(Number(e.target.value))} style={{ ...inp, width: "100%", marginBottom: 16, cursor: "pointer" }}>
-                <option value="" disabled>A chi assegnare a {bid || p.q}?</option>
+              <select autoFocus disabled={savingAssign} defaultValue="" onChange={(e) => e.target.value !== "" && doAssign(Number(e.target.value))} style={{ ...inp, width: "100%", marginBottom: 16, cursor: savingAssign ? "default" : "pointer" }}>
+                <option value="" disabled>{savingAssign ? "Salvataggio..." : `A chi assegnare a ${bid || p.q}?`}</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             )
@@ -1114,6 +1138,7 @@ function LiveView({ players, teams, assign }) {
   const [quickPlayer, setQuickPlayer] = useState(null);
   const [quickTeam, setQuickTeam] = useState(null);
   const [quickPrice, setQuickPrice] = useState(1);
+  const [assigningLive, setAssigningLive] = useState(false);
   const audioCtxRef = useRef(null);
 
   // lazy audio context (created on first user gesture)
@@ -1228,9 +1253,12 @@ function LiveView({ players, teams, assign }) {
 
   const togglePause = () => setRunning((r) => !r);
 
-  const doAssign = () => {
+  const doAssign = async () => {
+    if (assigningLive) return;
     if (current && leader !== null) {
-      assign(current.id, leader, price);
+      setAssigningLive(true);
+      await assign(current.id, leader, price);
+      setAssigningLive(false);
     }
     reset();
   };
@@ -1239,9 +1267,11 @@ function LiveView({ players, teams, assign }) {
     setQuickTeam(null);
     setQuickPrice(Math.max(1, p.q || 1));
   };
-  const doQuickAssign = () => {
-    if (!quickPlayer || quickTeam === null) return;
-    assign(quickPlayer.id, quickTeam, quickPrice);
+  const doQuickAssign = async () => {
+    if (!quickPlayer || quickTeam === null || assigningLive) return;
+    setAssigningLive(true);
+    await assign(quickPlayer.id, quickTeam, quickPrice);
+    setAssigningLive(false);
     setQuickPlayer(null);
     setQuickTeam(null);
     setQuery("");
@@ -1292,9 +1322,9 @@ function LiveView({ players, teams, assign }) {
                 </button>
               ))}
             </div>
-            <button onClick={doQuickAssign} disabled={quickTeam === null}
-              style={{ width: "100%", background: quickTeam === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "11px", fontWeight: 900, cursor: quickTeam === null ? "default" : "pointer" }}>
-              <Check size={16} style={{ verticalAlign: "middle" }} /> Assegna in diretta
+          <button onClick={doQuickAssign} disabled={quickTeam === null || assigningLive}
+              style={{ width: "100%", background: quickTeam === null || assigningLive ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 10, padding: "11px", fontWeight: 900, cursor: quickTeam === null || assigningLive ? "default" : "pointer" }}>
+              <Check size={16} style={{ verticalAlign: "middle" }} /> {assigningLive ? "Salvataggio..." : "Assegna in diretta"}
             </button>
           </div>
         )}
@@ -1348,9 +1378,9 @@ function LiveView({ players, teams, assign }) {
             <Play size={15} /> Riapri (+{RESET_TIME}s)
           </button>
           <button onClick={reset} style={{ ...btnGhost, justifyContent: "center", width: "100%" }}>Annulla</button>
-          <button onClick={doAssign} disabled={leader === null}
-            style={{ background: leader === null ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 800, cursor: leader === null ? "default" : "pointer", width: "100%" }}>
-            <Check size={16} style={{ verticalAlign: "middle" }} /> Aggiudica a {leaderName} ({price})
+          <button onClick={doAssign} disabled={leader === null || assigningLive}
+            style={{ background: leader === null || assigningLive ? "#cbd5e1" : "#22c55e", color: "white", border: "none", borderRadius: 8, padding: "10px", fontWeight: 800, cursor: leader === null || assigningLive ? "default" : "pointer", width: "100%" }}>
+            <Check size={16} style={{ verticalAlign: "middle" }} /> {assigningLive ? "Salvataggio..." : `Aggiudica a ${leaderName} (${price})`}
           </button>
         </>
       )}
