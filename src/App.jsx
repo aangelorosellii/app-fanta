@@ -97,6 +97,8 @@ function ResponsiveStyles() {
         .af-market-grid { grid-template-columns: repeat(2, 1fr) !important; }
         .af-live-layout { grid-template-columns: 1fr !important; }
         .af-live-actions { position: static !important; }
+        .af-my-team-grid, .af-tier-grid { grid-template-columns: 1fr !important; }
+        .af-roster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
         .af-header-actions { flex-wrap: wrap; justify-content: flex-end; }
       }
       /* su schermi molto piccoli i bottoni prezzo restano leggibili */
@@ -281,7 +283,8 @@ export default function App() {
   const isDev = canSeeAnalysis(currentUser);
   const canMng = canManage(currentUser);
   // nome mostrato in alto
-  const userLabel = currentUser.kind === "dev" ? "Developer" : currentUser.kind === "admin" ? "Admin lega" : INIT_TEAMS[currentUser.teamId].name;
+  const devTeamId = currentUser.kind === "dev" && typeof currentUser.teamId === "number" ? currentUser.teamId : 0;
+  const userLabel = currentUser.kind === "dev" ? `Developer · ${INIT_TEAMS[devTeamId].name}` : currentUser.kind === "admin" ? "Admin lega" : INIT_TEAMS[currentUser.teamId].name;
   // se non autorizzato ma per qualche motivo è sulla vista analisi, riporta all'asta
   const safeView = view === "analysis" && !isDev ? "auction" : view;
 
@@ -310,7 +313,7 @@ export default function App() {
       </div>
 
       {safeView === "analysis" && isDev && (
-        <AnalysisView players={players} teams={teams} stats={stats} assign={assign} toggleTarget={toggleTarget} />
+        <AnalysisView players={players} teams={teams} stats={stats} assign={assign} toggleTarget={toggleTarget} currentUser={currentUser} />
       )}
       {safeView === "auction" && (
         <LiveView players={players} teams={teams} assign={assign} />
@@ -324,14 +327,35 @@ export default function App() {
 
 /* ---------------- LOGIN ---------------- */
 function LoginScreen({ onLogin }) {
-  const [mode, setMode] = useState("choose"); // "choose" | "dev"
+  const [mode, setMode] = useState("choose"); // "choose" | "dev" | "devTeam"
   const [pwd, setPwd] = useState("");
   const [err, setErr] = useState(false);
 
   const tryDev = () => {
-    if (pwd === DEV_PASSWORD) onLogin({ kind: "dev" });
+    if (pwd === DEV_PASSWORD) setMode("devTeam");
     else setErr(true);
   };
+
+  if (mode === "devTeam") {
+    return (
+      <div style={{ maxWidth: 380, width: "100%", margin: "0 auto", padding: "16px clamp(12px, 4vw, 16px)", fontFamily: "system-ui, sans-serif", color: "#1e293b" }}>
+        <ResponsiveStyles />
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "40px 0 4px", textAlign: "center" }}>⚽ Asta Fanta</h1>
+        <p style={{ textAlign: "center", color: "#64748b", fontSize: 14, marginTop: 0, marginBottom: 20 }}>Chi sta entrando?</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button onClick={() => onLogin({ kind: "dev", teamId: 0 })}
+            style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+            Angelo
+          </button>
+          <button onClick={() => onLogin({ kind: "dev", teamId: 1 })}
+            style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+            Loriano
+          </button>
+        </div>
+        <button onClick={() => { setMode("dev"); setPwd(""); setErr(false); }} style={{ ...btnGhost, width: "100%", justifyContent: "center", marginTop: 8 }}>Indietro</button>
+      </div>
+    );
+  }
 
   if (mode === "dev") {
     return (
@@ -478,7 +502,141 @@ function ARich({ text }) {
   return <span>{parts.map((p, i) => (p.startsWith("**") && p.endsWith("**") ? <strong key={i} style={{ color: "#0f172a" }}>{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>))}</span>;
 }
 
-function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
+const combinedTier = (p) => {
+  const goal = p.goal;
+  const score = p.score ?? 0;
+  if (["Top", "Prima fascia"].includes(goal) || score >= 75) return "TOP";
+  if (["Consigliato", "Titolare bonus", "Seconda fascia"].includes(goal) || (score >= 55 && score <= 74)) return "CONSIGLIATO";
+  if (goal === "Scommessa" || (score >= 35 && score <= 54)) return "SCOMMESSA";
+  return "LOW";
+};
+
+const COMBINED_TIER_STYLE = {
+  TOP: { bg: "#fef3c7", fg: "#92400e" },
+  CONSIGLIATO: { bg: "#dcfce7", fg: "#166534" },
+  SCOMMESSA: { bg: "#f3e8ff", fg: "#6b21a8" },
+};
+
+function CombinedTierBadge({ tier }) {
+  const s = COMBINED_TIER_STYLE[tier] || { bg: "#e2e8f0", fg: "#475569" };
+  return <span style={{ background: s.bg, color: s.fg, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>{tier}</span>;
+}
+
+function MyTeamPanel({ me, stats, myTeamId }) {
+  const spentPct = Math.min(100, Math.max(0, (me.spent / TOTAL_BUDGET) * 100));
+  const others = stats.filter((_, i) => i !== myTeamId);
+  const avgSpent = others.length ? others.reduce((sum, t) => sum + t.spent, 0) / others.length : 0;
+  const delta = Math.round(me.spent - avgSpent);
+  const trendText = delta === 0 ? "spendi in linea con la media della lega" : delta > 0 ? `spendi ${delta} crediti più della media della lega` : `spendi ${Math.abs(delta)} crediti meno della media della lega`;
+  const rosterByRole = Object.fromEntries(ROLES.map((r) => [r.key, me.roster.filter((p) => p.role === r.key)]));
+
+  return (
+    <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 2 }}>LA MIA SQUADRA</div>
+          <div style={{ fontSize: 21, fontWeight: 900, color: "#0f172a" }}>{me.name}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>MAX OFFERTA</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#16a34a" }}>{me.maxBid}</div>
+        </div>
+      </div>
+      <div className="af-my-team-grid" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.2fr) minmax(220px, 1fr)", gap: 12 }}>
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
+            <span>Budget {me.spent}/{TOTAL_BUDGET}</span>
+            <span>{me.remaining} residui</span>
+          </div>
+          <div style={{ height: 10, background: "#e2e8f0", borderRadius: 999, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ width: `${spentPct}%`, height: "100%", background: "#0f172a", borderRadius: 999 }} />
+          </div>
+          <div style={{ color: "#64748b", fontSize: 13 }}>{trendText}</div>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignContent: "flex-start" }}>
+          {ROLES.map((r) => {
+            const full = (me.counts[r.key] || 0) >= r.need;
+            return (
+              <span key={r.key} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: full ? "#dcfce7" : "#f8fafc", color: full ? "#166534" : "#475569", border: `1px solid ${full ? "#86efac" : "#e2e8f0"}`, borderRadius: 999, padding: "5px 9px", fontSize: 12, fontWeight: 900 }}>
+                {r.key} {me.counts[r.key] || 0}/{r.need}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+        {me.roster.length === 0 ? (
+          <div style={{ color: "#94a3b8", fontSize: 13 }}>Nessun giocatore ancora</div>
+        ) : (
+          <div className="af-roster-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+            {ROLES.map((r) => (
+              <div key={r.key} style={{ minWidth: 0 }}>
+                <div style={{ color: r.color, fontSize: 12, fontWeight: 900, marginBottom: 4 }}>{r.label}</div>
+                {rosterByRole[r.key].length === 0 ? (
+                  <div style={{ color: "#cbd5e1", fontSize: 12 }}>Vuoto</div>
+                ) : rosterByRole[r.key].map((p) => (
+                  <div key={p.id} style={{ color: "#334155", fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>
+                    {p.name} <b>({p.paid || 0})</b>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TierAdvicePanel({ players, role, me, setSelected }) {
+  const enrichedFree = useMemo(() => players
+    .filter((p) => p.owner === null && p.role === role)
+    .map((p) => ({ ...p, ...getAnalisi(p.id) })), [players, role]);
+  const grouped = useMemo(() => {
+    const groups = { TOP: [], CONSIGLIATO: [], SCOMMESSA: [] };
+    enrichedFree.forEach((p) => {
+      const tier = combinedTier(p);
+      if (groups[tier]) groups[tier].push({ ...p, combinedTier: tier, dyn: dynamicPrice(p, me, players) });
+    });
+    Object.keys(groups).forEach((tier) => groups[tier].sort((a, b) => (b.score ?? -1) - (a.score ?? -1)));
+    return groups;
+  }, [enrichedFree, me, players]);
+  const topCount = grouped.TOP.length;
+  const roleNeed = ROLE_MAP[role].need;
+  const roleMissing = Math.max(0, roleNeed - (me.counts[role] || 0));
+
+  return (
+    <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>Consigli per {ROLE_MAP[role].label}</div>
+        <div style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>{topCount} TOP liberi · ti mancano {roleMissing} slot</div>
+      </div>
+      <div className="af-tier-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+        {["TOP", "CONSIGLIATO", "SCOMMESSA"].map((tier) => (
+          <div key={tier} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, minWidth: 0 }}>
+            <div style={{ marginBottom: 8 }}><CombinedTierBadge tier={tier} /></div>
+            {grouped[tier].slice(0, 5).length === 0 ? (
+              <div style={{ color: "#94a3b8", fontSize: 12 }}>Nessun nome libero</div>
+            ) : grouped[tier].slice(0, 5).map((p) => (
+              <button key={p.id} onClick={() => setSelected(p)}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, width: "100%", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 8px", cursor: "pointer", textAlign: "left", marginBottom: 6 }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {p.team} <CombinedTierBadge tier={tier} />
+                  </span>
+                </span>
+                <span style={{ color: "#065f46", fontSize: 13, fontWeight: 900, flexShrink: 0 }}>{p.dyn.sugg}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisView({ players, teams, stats, assign, toggleTarget, currentUser }) {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("P");
   const [mantra, setMantra] = useState("ALL"); // filtro ruolo specifico
@@ -488,7 +646,8 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
   const [assigning, setAssigning] = useState(null);
 
   const teamList = useMemo(() => [...new Set(players.map((p) => p.team))].sort(), [players]);
-  const me = stats[0];
+  const myTeamId = (currentUser && typeof currentUser.teamId === "number") ? currentUser.teamId : 0;
+  const me = stats[myTeamId] || stats[0];
 
   // arricchisco ogni player con i suoi dati di analisi
   const enriched = useMemo(() => players.map((p) => ({ ...p, ...getAnalisi(p.id) })), [players]);
@@ -530,6 +689,9 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
       <div style={{ fontSize: 13, color: "#64748b", marginBottom: 12 }}>
         Statistiche 25/26, previsione post-calciomercato 26/27 e consiglio Goal.com. Tocca ★ per marcare un obiettivo (compare anche nell'Asta).
       </div>
+
+      <MyTeamPanel me={me} stats={stats} myTeamId={myTeamId} />
+      <TierAdvicePanel players={players} role={role} me={me} setSelected={setSelected} />
 
       {/* filtri */}
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 12 }}>
@@ -626,7 +788,7 @@ function AnalysisView({ players, teams, stats, assign, toggleTarget }) {
         {filtered.length > 250 && <div style={{ padding: 10, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Mostrati i primi 250 – affina la ricerca</div>}
       </div>
 
-      {selected && <AnalysisModal p={selected} teams={teams} stats={stats} players={players} assign={assign} toggleTarget={toggleTarget} onClose={() => setSelected(null)} />}
+      {selected && <AnalysisModal p={selected} teams={teams} stats={stats} players={players} assign={assign} toggleTarget={toggleTarget} currentUser={currentUser} onClose={() => setSelected(null)} />}
       {assigning && <AnalysisAssignModal p={assigning} teams={teams} assign={assign} onClose={() => setAssigning(null)} />}
     </div>
   );
@@ -677,9 +839,10 @@ function AnalysisAssignModal({ p, teams, assign, onClose }) {
   );
 }
 
-function AnalysisModal({ p, teams, stats, players, assign, toggleTarget, onClose }) {
+function AnalysisModal({ p, teams, stats, players, assign, toggleTarget, currentUser, onClose }) {
   const r = ROLE_MAP[p.role];
-  const me = stats[0];
+  const myTeamId = (currentUser && typeof currentUser.teamId === "number") ? currentUser.teamId : 0;
+  const me = stats[myTeamId] || stats[0];
   const dyn = dynamicPrice(p, me, players);
   const [picking, setPicking] = useState(false);
   const [bid, setBid] = useState(String(p.prezzo ?? p.q ?? 1));
