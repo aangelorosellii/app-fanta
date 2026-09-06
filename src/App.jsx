@@ -55,7 +55,6 @@ const TEAM_NAMES = ["Angelo", "Loriano", "Linneo", "Jason", "Bryan", "Serra", "S
 const INIT_TEAMS = TEAM_NAMES.map((name, i) => ({ id: i, name }));
 
 // --- Gestione accessi ---
-// team = Angelo/Loriano: vede Asta e Lega
 // dev = sviluppatore (password): vede TUTTO, Analisi compresa, + poteri
 const DEV_PASSWORD = "ZoeBella";
 const canSeeAnalysis = (user) => !!user && user.kind === "dev";
@@ -68,7 +67,7 @@ function loadUser() {
     const raw = localStorage.getItem(USER_KEY);
     if (!raw) return null;
     const u = JSON.parse(raw);
-    if (!u || !["dev", "team"].includes(u.kind)) return null;
+    if (!u || u.kind !== "dev") return null;
     if (typeof u.teamId !== "number") return { ...u, teamId: 0 };
     return u;
   } catch (e) { return null; }
@@ -408,11 +407,11 @@ function LoginScreen({ onLogin }) {
           style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #0f172a", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 800, color: "white" }}>
           Developer
         </button>
-        <button onClick={() => onLogin({ kind: "team", teamId: 0 })}
+        <button onClick={() => onLogin({ kind: "dev", teamId: 0 })}
           style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
           Angelo
         </button>
-        <button onClick={() => onLogin({ kind: "team", teamId: 1 })}
+        <button onClick={() => onLogin({ kind: "dev", teamId: 1 })}
           style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
           Loriano
         </button>
