@@ -55,12 +55,10 @@ const TEAM_NAMES = ["Angelo", "Loriano", "Linneo", "Jason", "Bryan", "Serra", "S
 const INIT_TEAMS = TEAM_NAMES.map((name, i) => ({ id: i, name }));
 
 // --- Gestione accessi ---
-// team  = una delle 8 squadre: vede Asta e Lega
-// admin = gestore lega: vede Asta e Lega + poteri (Excel), NIENTE Analisi
-// dev   = sviluppatore (password): vede TUTTO, Analisi compresa, + poteri
+// dev = sviluppatore (password): vede TUTTO, Analisi compresa, + poteri
 const DEV_PASSWORD = "ZoeBella";
 const canSeeAnalysis = (user) => !!user && user.kind === "dev";
-const canManage = (user) => !!user && (user.kind === "dev" || user.kind === "admin");
+const canManage = (user) => !!user && user.kind === "dev";
 
 const USER_KEY = "astaFantaUser_v2";
 
@@ -69,7 +67,8 @@ function loadUser() {
     const raw = localStorage.getItem(USER_KEY);
     if (!raw) return null;
     const u = JSON.parse(raw);
-    if (!u || !u.kind) return null;
+    if (!u || u.kind !== "dev") return null;
+    if (typeof u.teamId !== "number") return { ...u, teamId: 0 };
     return u;
   } catch (e) { return null; }
 }
@@ -307,7 +306,7 @@ export default function App() {
   const canMng = canManage(currentUser);
   // nome mostrato in alto
   const devTeamId = currentUser.kind === "dev" && typeof currentUser.teamId === "number" ? currentUser.teamId : 0;
-  const userLabel = currentUser.kind === "dev" ? `Developer · ${INIT_TEAMS[devTeamId].name}` : currentUser.kind === "admin" ? "Admin lega" : INIT_TEAMS[currentUser.teamId].name;
+  const userLabel = `Developer · ${INIT_TEAMS[devTeamId].name}`;
   // se non autorizzato ma per qualche motivo è sulla vista analisi, riporta all'asta
   const safeView = view === "analysis" && !isDev ? "auction" : view;
 
@@ -350,7 +349,7 @@ export default function App() {
 
 /* ---------------- LOGIN ---------------- */
 function LoginScreen({ onLogin }) {
-  const [mode, setMode] = useState("choose"); // "choose" | "dev" | "devTeam"
+  const [mode, setMode] = useState("dev"); // "dev" | "devTeam"
   const [pwd, setPwd] = useState("");
   const [err, setErr] = useState(false);
 
@@ -391,29 +390,13 @@ function LoginScreen({ onLogin }) {
           placeholder="Password"
           style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 10, border: `1px solid ${err ? "#fca5a5" : "#cbd5e1"}`, fontSize: 16, marginBottom: 8, outline: "none" }} />
         {err && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 8 }}>Password errata.</div>}
-        <button onClick={tryDev} style={{ width: "100%", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 800, cursor: "pointer", marginBottom: 8 }}>Entra</button>
-        <button onClick={() => { setMode("choose"); setPwd(""); setErr(false); }} style={{ ...btnGhost, width: "100%", justifyContent: "center" }}>Indietro</button>
+        <button onClick={tryDev} style={{ width: "100%", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontWeight: 800, cursor: "pointer" }}>Entra</button>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 380, width: "100%", margin: "0 auto", padding: "16px clamp(12px, 4vw, 16px)", fontFamily: "system-ui, sans-serif", color: "#1e293b" }}>
-      <ResponsiveStyles />
-      <h1 style={{ fontSize: 24, fontWeight: 800, margin: "40px 0 4px", textAlign: "center" }}>⚽ Asta Fanta</h1>
-      <p style={{ textAlign: "center", color: "#64748b", fontSize: 14, marginTop: 0, marginBottom: 24 }}>Scegli come entrare.</p>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <button onClick={() => onLogin({ kind: "admin" })}
-          style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
-          Admin lega
-        </button>
-        <button onClick={() => setMode("dev")}
-          style={{ display: "flex", alignItems: "center", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", cursor: "pointer", textAlign: "left", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
-          Developer
-        </button>
-      </div>
-    </div>
+    null
   );
 }
 
